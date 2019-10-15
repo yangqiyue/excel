@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URLEncoder;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -305,7 +306,10 @@ public class ExcelUtil {
         }
         // 创建一个工作表sheet 默认是表名是sheet0
         Sheet sheet = workbook.createSheet(excelName);
-        setWorkBook(workbook, sheet, fields);
+        CellStyle cellStyle = getCellStyle(workbook);
+        setWorkBook(workbook, cellStyle, sheet, fields);
+        // CellStyle 缓存
+        Map<String, CellStyle> hashMap = new HashMap<>();
         try {
             if (flag) {
                 // 开始生成excel
@@ -324,7 +328,7 @@ public class ExcelUtil {
                             log.error("【excel导出】class映射地址：{},空指针参数：{},{}", clazz.getCanonicalName(), field.getName(), "数据集空指针");
                             return false;
                         }
-                        setValue(getCell(workbook, row, i, o, field), o, field);
+                        setValue(getCell(workbook, hashMap, row, i, o, field), o, field);
                     }
                 }
             }
@@ -365,11 +369,15 @@ public class ExcelUtil {
                 || value instanceof Float
                 || value instanceof Long
                 || value instanceof Short) {
-            // 判断类型
-            BigDecimal bi1 = new BigDecimal(value.toString());
-            BigDecimal bi2 = new BigDecimal("10000");
-            BigDecimal divide = bi1.divide(bi2, field.getAnnotation(Excel.class).type().decimalType().getScale(), RoundingMode.HALF_UP);
-            cell.setCellValue(divide.doubleValue());
+            if (field.getAnnotation(Excel.class).type().IsMoney()) {
+                // 判断类型
+                BigDecimal bi1 = new BigDecimal(value.toString());
+                BigDecimal bi2 = new BigDecimal("10000");
+                BigDecimal divide = bi1.divide(bi2, field.getAnnotation(Excel.class).type().decimalType().getScale(), RoundingMode.HALF_UP);
+                cell.setCellValue(divide.doubleValue());
+            } else {
+                cell.setCellValue(value.toString());
+            }
         } else if (value instanceof Date) {
             SimpleDateFormat sdf = new SimpleDateFormat(field.getAnnotation(Excel.class).type().timeType().getTimeType());
             cell.setCellValue(sdf.format((Date) value));
@@ -380,13 +388,15 @@ public class ExcelUtil {
      * 设置excel单元格样式
      *
      * @param workbook
+     * @param hashMap
      * @param row
      * @param num
+     * @param value
      * @param field
      * @return
      */
-    private static Cell getCell(Workbook workbook, Row row, int num, Object value, Field field) {
-        CellStyle cellStyle = getCellStyle(workbook);
+    private static Cell getCell(Workbook workbook, Map<String, CellStyle> hashMap, Row row, int num, Object value, Field field) {
+        CellStyle cellStyle;
         // 获取指定单元格
         Cell cell = row.createCell(num);
         // 设置类型
@@ -395,11 +405,35 @@ public class ExcelUtil {
                 || value instanceof Double
                 || value instanceof Float
                 || value instanceof Long) {
-            cellStyle.setDataFormat(format.getFormat(field.getAnnotation(Excel.class).type().decimalType().getDecimal().toString()));
+            if (field.getAnnotation(Excel.class).type().IsMoney()) {
+                cellStyle = hashMap.get(field.getAnnotation(Excel.class).type().decimalType().getDecimal().toString());
+                if (cellStyle == null) {
+                    cellStyle = getCellStyle(workbook);
+                    cellStyle.setDataFormat(format.getFormat(field.getAnnotation(Excel.class).type().decimalType().getDecimal().toString()));
+                    hashMap.put(field.getAnnotation(Excel.class).type().decimalType().getDecimal().toString(), cellStyle);
+                }
+            } else {
+                cellStyle = hashMap.get("@");
+                if (cellStyle == null) {
+                    cellStyle = getCellStyle(workbook);
+                    cellStyle.setDataFormat(format.getFormat("@"));
+                    hashMap.put("@", cellStyle);
+                }
+            }
         } else if (value instanceof Date) {
-            cellStyle.setDataFormat(format.getFormat(field.getAnnotation(Excel.class).type().timeType().getTimeType()));
+            cellStyle = hashMap.get(field.getAnnotation(Excel.class).type().timeType().getTimeType().toString());
+            if (cellStyle == null) {
+                cellStyle = getCellStyle(workbook);
+                cellStyle.setDataFormat(format.getFormat(field.getAnnotation(Excel.class).type().timeType().getTimeType()));
+                hashMap.put(field.getAnnotation(Excel.class).type().timeType().getTimeType().toString(), cellStyle);
+            }
         } else {
-            cellStyle.setDataFormat(format.getFormat("@"));
+            cellStyle = hashMap.get("@");
+            if (cellStyle == null) {
+                cellStyle = getCellStyle(workbook);
+                cellStyle.setDataFormat(format.getFormat("@"));
+                hashMap.put("@", cellStyle);
+            }
         }
         cell.setCellStyle(cellStyle);
         return cell;
@@ -409,10 +443,11 @@ public class ExcelUtil {
      * 设置excel 样式 （第一行格式）
      *
      * @param workbook
+     * @param cellStyle
      * @param sheet
+     * @param fields
      */
-    private static void setWorkBook(Workbook workbook, Sheet sheet, Field[] fields) {
-        CellStyle cellStyle = getCellStyle(workbook);
+    private static void setWorkBook(Workbook workbook, CellStyle cellStyle, Sheet sheet, Field[] fields) {
         //写入excel的表头（创建第一行）
         Row row = sheet.createRow(0);
         // 设置类型
@@ -446,9 +481,9 @@ public class ExcelUtil {
         // 设置单元格内容垂直对其方式为居中
         cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
         // 设置字体
-        Font font = workbook.createFont();
-        font.setFontName("宋体");
-        cellStyle.setFont(font);
+//        Font font = workbook.createFont();
+//        font.setFontName("宋体");
+//        cellStyle.setFont(font);
         return cellStyle;
     }
 
@@ -460,18 +495,19 @@ public class ExcelUtil {
      */
     private static void createResponse(String excelName, HttpServletResponse response, Type type) {
         // 设置response头信息
-        response.reset();
+        //        response.reset();
         // 改成输出excel文件
         response.setContentType("application/vnd.ms-excel");
+        response.setHeader("Access-Control-Expose-Headers", "Content-disposition");
         try {
             switch (type) {
                 case XLS:
                     response.setHeader("Content-disposition", "attachment; filename="
-                            + new String((excelName).getBytes("gb2312"), "ISO-8859-1") + ".xls");
+                            + new String(URLEncoder.encode(excelName, "UTF-8").getBytes("UTF-8"), "ISO8859-1") + ".xls");
                     break;
                 case XLS_X:
                     response.setHeader("Content-disposition", "attachment; filename="
-                            + new String((excelName).getBytes("gb2312"), "ISO-8859-1") + ".xlsx");
+                            + new String(URLEncoder.encode(excelName, "UTF-8").getBytes("UTF-8"), "ISO8859-1") + ".xlsx");
                     break;
                 default:
                     log.error("【excel导出】{}", "excel类型错误，只支持xls与xlsx！");

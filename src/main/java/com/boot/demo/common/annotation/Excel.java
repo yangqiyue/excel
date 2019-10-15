@@ -20,6 +20,7 @@ import java.lang.annotation.*;
 @Target({ElementType.FIELD})
 public @interface Excel {
 
+
     /**
      * 表头中文
      *
@@ -43,8 +44,6 @@ public @interface Excel {
 
     /**
      * 是否允许空值 ，默认不允许
-     * <p>
-     * false：不允许   true ：允许
      *
      * @return
      */
@@ -59,9 +58,6 @@ public @interface Excel {
 
     /**
      * 设置格式
-     * 默认：
-     * 时间：yyyy-MM-dd HH:mm:ss
-     * 小数点：两位，四舍五入
      *
      * @return
      */
@@ -69,6 +65,8 @@ public @interface Excel {
 
         TimeType timeType() default TimeType.TIMEF_FORMAT;
 
-        DecimalType decimalType() default DecimalType.two;
+        DecimalType decimalType() default DecimalType.TWO;
+
+        boolean IsMoney() default true;
     }
 }

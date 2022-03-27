@@ -23,7 +23,7 @@ public class test {
     private Date time;
     @Excel(orderNum = 3, titleName = "数字",
             type = @Excel.CellType(
-                    decimalType = DecimalType.three
+                    decimalType = DecimalType.THREE
             )
     )
     private double num;
